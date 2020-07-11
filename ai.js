@@ -3,10 +3,13 @@ const fs = require('fs');
 const client = new Discord.Client();
 const TOKEN = '';
 const raw = fs.readFileSync('patterns.json');
-const chanceToAdd = 0.5;
-const chanceToRespond = 0.2;
-const replyFactor = 21000;
-const wordsToFilter = [];
+const chanceToAdd = 0.5; //Determines the chance for the bot to add a message to the JSON file (.5 = 50% chance)
+const chanceToRespond = 0.2; //Determines the chance for the bot to respond to a message (.2 = 20% chance)
+const pingChance = 0.3; //Determines the chance for the bot to ping the user it is replying to (.3 = 30% chance)
+const replyFactor = 21000; //Determines what the random generated number for typing speed is multiplied by in MS
+const learnChannelBL = []; //If a channel ID is in this array in quotes, the bot won't learn messages from that channel
+const sendChannelBL = []; //If a channel ID is in this array in quotes, the bot won't send any messages to that channel
+const wordsToFilter = []; //If a message contains a word/phrase from the filter array, it wont be added to the JSON file
 let patterns = JSON.parse(raw);
 let queue = 0; //the queue is used to avoid message spam
 
@@ -35,7 +38,7 @@ const getReplyTime = () => {
 //Sends a random message from the speech patterns JSON file and clears a spot in the message queue
 const sendRand = (message) => {
     message.channel.send(patterns.speechPatterns[Math.floor(Math.random() *
-        patterns.speechPatterns.length)]);
+        patterns.speechPatterns.length)]).catch(() => {});
     queue--;
     message.channel.stopTyping();
 };
@@ -43,13 +46,13 @@ const sendRand = (message) => {
 
 //Checks against filters and automatically filters spam
 const filterMessages = (message) => {
-    if (message.content.includes('https://') || message.content.includes(
-            '\n')) return '';
+    if (message.content.includes('http') || message.content.includes(
+            '\n') || message.content.includes('discord.gg') || learnChannelBL.includes(message.channel.id )) return '';
     speech = message.content.replace(/[!<@>\d]/g,
     ''); //Removes all mentions of a user before adding the speech pattern to the JSON file
     speech = speech.replace(/:\w*:/g, ''); //removes any emotes
     for (let i = 0; i < wordsToFilter.length; i++) {
-        if (speech.includes(wordsToFilter[i])) return '';
+        if (speech.toLowerCase().includes(wordsToFilter[i])) return ''; //c: popsicle
     };
     return speech;
 };
@@ -57,6 +60,7 @@ const filterMessages = (message) => {
 //Checks if a message is being added to the JSON file
 const writeMessages = (speech) => {
     if (addChance()) {
+        if (speech.length === 0) return; //c: popsicle
         for (let i = 0; i < patterns.speechPatterns.length; i++) {
             if (patterns.speechPatterns[i] == speech) return;
         };
@@ -65,8 +69,9 @@ const writeMessages = (speech) => {
     }
 };
 
-//determines if and how the bot will reply to a message
+//Determines if and how the bot will reply to a message
 const replyMessages = (message, speech) => {
+    if (sendChannelBL.includes(message.channel.id)) return;
     let name = client.user.username.toLowerCase();
     if (respondChance() && !message.content.toLowerCase().includes(name) &&
         !message.content.includes(client.user.id)) {
@@ -79,14 +84,14 @@ const replyMessages = (message, speech) => {
             }, Math.random() * 7000);
             queue++;
             setTimeout(() => {
-                message.channel.send(common);
+                message.channel.send(common).catch(() => {});
                 queue--
                 message.channel.stopTyping();
             }, getReplyTime());
             return;
         } else {
-            if (Math.random() >
-                0.3) { //The bot has a 50% chance of pinging the user of whose message it is responding to
+            if (Math.random() <
+                pingChance) { //The bot has a 50% chance of pinging the user of whose message it is responding to
                 message.channel.stopTyping();
                 setTimeout(() => {
                     message.channel.startTyping()
@@ -95,7 +100,7 @@ const replyMessages = (message, speech) => {
                 setTimeout(() => {
                     message.channel.send(
                         `<@${message.author.id}> ${patterns.speechPatterns[Math.floor(Math.random() * patterns.speechPatterns.length)]}`
-                        );
+                        ).catch(() => {});
                     queue--;
                     message.channel.stopTyping();
                 }, getReplyTime());
@@ -113,6 +118,8 @@ const replyMessages = (message, speech) => {
 };
 
 const commonFound = (message) => {
+    message.content = message.content.replace(/[!<@>\d]/g, ''); //Removes all mentions of a user
+    message.content = message.content.replace(/:\w*:/g, ''); //removes any emotes
     let commonSpeech = null;
     for (let i = 0; i < patterns.speechPatterns.length; i++) {
         if (patterns.speechPatterns[i].includes(message.content) && patterns
@@ -124,11 +131,13 @@ const commonFound = (message) => {
 };
 
 const nameHeard = (message) => {
+    if (sendChannelBL.includes(message.channel.id)) return;
     let name = client.user.username.toLowerCase();
     if (message.content.toLowerCase().includes(name) || message.content
-        .includes(client.user.id)) {
-        //If a stored speech pattern has similarities with the parsed message, send that speech pattern to make the bot seem more human
+        .includes(client.user.id)) { //If a stored speech pattern has similarities with the parsed message, send that speech pattern to make the bot seem more human
         common = commonFound(message);
+        message.content = message.content.replace(/[!<@>\d]/g, ''); //Removes all mentions of a user
+        message.content = message.content.replace(/:\w*:/g, ''); //removes any emotes
         if (common != null) {
             message.channel.stopTyping();
             setTimeout(() => {
@@ -136,7 +145,7 @@ const nameHeard = (message) => {
             }, Math.random() * 7000);
             queue++;
             setTimeout(() => {
-                message.channel.send(common);
+                message.channel.send(common).catch(() => {});
                 queue--;
                 message.channel.stopTyping();
             }, getReplyTime());
@@ -161,6 +170,7 @@ client.on('ready', () => {
 
 //Checking for messages and assigning them the message variable
 client.on('message', message => {
+    console.log(message.channel.id);
     if (queue > 2) return;
     if (message.channel.type == "dm" || message.author.tag == client
         .user.tag || message.author.bot == true || message.content
@@ -169,7 +179,7 @@ client.on('message', message => {
     }
     speechPattern = filterMessages(message);
     writeMessages(speechPattern);
-    replyMessages(message, speechPattern);
+    replyMessages(message, speechPattern)
     nameHeard(message);
 
 });
