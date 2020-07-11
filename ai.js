@@ -170,7 +170,6 @@ client.on('ready', () => {
 
 //Checking for messages and assigning them the message variable
 client.on('message', message => {
-    console.log(message.channel.id);
     if (queue > 2) return;
     if (message.channel.type == "dm" || message.author.tag == client
         .user.tag || message.author.bot == true || message.content
